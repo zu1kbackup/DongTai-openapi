@@ -40,7 +40,11 @@ class HeartBeatHandler(IReportHandler):
         self.report_queue = self.detail.get('reportQueue', 0)
         self.method_queue = self.detail.get('methodQueue', 0)
         self.replay_queue = self.detail.get('replayQueue', 0)
-        self.return_queue = self.detail.get('returnQueue', 1)
+        self.return_queue = self.detail.get('returnQueue', None)
+
+    def has_permission(self):
+        self.agent = IastAgent.objects.filter(id=self.agent_id, user=self.user_id).first()
+        return self.agent
 
     def has_permission(self):
         self.agent = IastAgent.objects.filter(id=self.agent_id, user=self.user_id).first()
@@ -52,21 +56,35 @@ class HeartBeatHandler(IReportHandler):
         self.agent.online = 1
         self.agent.save(update_fields=['is_running', 'online'])
         queryset = IastHeartbeat.objects.filter(agent=self.agent)
-        heartbeat_count = queryset.values('id').count()
-        if heartbeat_count == 1:
-            heartbeat = queryset.first()
-            heartbeat.memory = self.memory
-            heartbeat.cpu = self.cpu
-            heartbeat.req_count = self.req_count
-            heartbeat.report_queue = self.report_queue
-            heartbeat.method_queue = self.method_queue
-            heartbeat.replay_queue = self.replay_queue
+        heartbeat = queryset.order_by('-id').first()
+        if heartbeat:
+            queryset.exclude(pk=heartbeat.id).delete()
             heartbeat.dt = int(time.time())
-            heartbeat.save(update_fields=[
-                'memory', 'cpu', 'req_count', 'dt', 'report_queue', 'method_queue', 'replay_queue'
-            ])
+            if self.return_queue == 1:
+                heartbeat.req_count = self.req_count
+                heartbeat.report_queue = self.report_queue
+                heartbeat.method_queue = self.method_queue
+                heartbeat.replay_queue = self.replay_queue
+                heartbeat.save(update_fields=[
+                    'req_count', 'dt', 'report_queue', 'method_queue', 'replay_queue'
+                ])
+            elif self.return_queue == 0:
+                heartbeat.memory = self.memory
+                heartbeat.cpu = self.cpu
+                heartbeat.save(update_fields=[
+                    'memory','cpu', 'dt'
+                ])
+            else:
+                heartbeat.memory = self.memory
+                heartbeat.cpu = self.cpu
+                heartbeat.req_count = self.req_count
+                heartbeat.report_queue = self.report_queue
+                heartbeat.method_queue = self.method_queue
+                heartbeat.replay_queue = self.replay_queue
+                heartbeat.save(update_fields=[
+                    'memory', 'cpu', 'req_count', 'dt', 'report_queue', 'method_queue', 'replay_queue'
+                ])
         else:
-            queryset.delete()
             IastHeartbeat.objects.create(memory=self.memory,
                                          cpu=self.cpu,
                                          req_count=self.req_count,
@@ -77,7 +95,7 @@ class HeartBeatHandler(IReportHandler):
                                          agent=self.agent)
 
     def get_result(self, msg=None):
-        if self.return_queue == 1:
+        if self.return_queue is None or self.return_queue == 1:
             try:
                 project_agents = IastAgent.objects.values('id').filter(bind_project_id=self.agent.bind_project_id)
                 if project_agents is None:
@@ -109,7 +127,7 @@ class HeartBeatHandler(IReportHandler):
                 IastVulnerabilityModel.objects.filter(id__in=failure_vul_ids).update(latest_time=timestamp, status_id=1)
                 logger.info(_('Reproduction request issued successfully'))
 
-                return replay_requests
+                return replay_requests 
             except Exception as e:
                 logger.info(_('Replay request query failed, reason: {}').format(e))
         return list()

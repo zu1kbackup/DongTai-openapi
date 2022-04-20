@@ -14,8 +14,8 @@ RUN pip3 install -r /opt/dongtai/openapi/requirements.txt && mkdir -p /tmp/iast_
 
 
 COPY . /opt/dongtai/openapi
-COPY ./*.jar /tmp/iast_cache/package/
+RUN mv /opt/dongtai/openapi/*.jar /tmp/iast_cache/package/ && mv /opt/dongtai/openapi/*.tar.gz /tmp/
 
 WORKDIR /opt/dongtai/openapi
 
-CMD ["/usr/local/bin/uwsgi","--ini", "/opt/dongtai/openapi/conf/uwsgi.ini"]
+ENTRYPOINT ["/bin/bash","/opt/dongtai/openapi/docker/entrypoint.sh"]
